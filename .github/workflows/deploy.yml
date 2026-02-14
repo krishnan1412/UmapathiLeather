@@ -1,0 +1,63 @@
+name: Leather Goods CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # ---------- FRONTEND ----------
+    - name: Install Frontend Dependencies
+      working-directory: Frontend
+      run: |
+        npm install || true
+
+    # ---------- BACKEND ----------
+    - name: Install Backend Dependencies
+      working-directory: Backend
+      run: |
+        npm install
+
+    # ---------- COPY TO EC2 ----------
+    - name: Copy Project to EC2
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        password: ${{ secrets.EC2_PASSWORD }}
+        source: "."
+        target: /home/ubuntu
+
+    # ---------- BACKEND PM2 ----------
+    - name: Restart Backend with PM2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        password: ${{ secrets.EC2_PASSWORD }}
+        script: |
+          cd ${{ secrets.EC2_PATH }}/Backend
+          npm install
+          pm2 stop leather-backend || true
+          pm2 start server.js --name leather-backend
+          pm2 save
+
+    # ---------- FRONTEND PM2 ----------
+    - name: Restart Frontend with PM2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        password: ${{ secrets.EC2_PASSWORD }}
+        script: |
+          cd ${{ secrets.EC2_PATH }}/Frontend
+          pm2 stop leather-frontend || true
+          pm2 start npx --name leather-frontend -- http-server -p 8081
+          pm2 save
